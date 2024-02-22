@@ -5,16 +5,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/bogem/id3v2"
-	"github.com/go-resty/resty/v2"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
+
+	"github.com/bogem/id3v2"
+	"github.com/go-resty/resty/v2"
 )
 
 func fileExists(filename string) (ok bool, err error) {
@@ -62,17 +61,21 @@ func main() {
 
 	_ = os.MkdirAll(OutputDirectory, 0755)
 
+	//定义用户代理和referer
+	userAgent := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15"
+	gcoreUrl := "https://www.gcores.com"
+
 	client :=
 		resty.New().
 			SetHostURL("https://www.gcores.com").
-			SetHeader("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15").
-			SetHeader("Referer", "https://www.gcores.com").
+			SetHeader("User-Agent", userAgent).
+			SetHeader("Referer", gcoreUrl).
 			SetDebug(true)
 
 	freeAudioClient := resty.New().
 		SetHostURL("https://alioss.gcores.com/uploads/audio").
-		SetHeader("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15").
-		SetHeader("Referer", "https://www.gcores.com").
+		SetHeader("User-Agent", userAgent).
+		SetHeader("Referer", gcoreUrl).
 		SetDebug(true)
 
 	protectedAudioClient :=
@@ -86,14 +89,14 @@ func main() {
 				Expires: time.Now().Add(time.Hour * 24 * 365),
 			}).
 			SetHostURL("https://www.gcores.com/gapi/v1/medias/protected/radios/").
-			SetHeader("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15").
-			SetHeader("Referer", "https://www.gcores.com").
+			SetHeader("User-Agent", userAgent).
+			SetHeader("Referer", gcoreUrl).
 			SetDebug(true)
 
 	coverClient := resty.New().
 		SetHostURL("https://image.gcores.com").
-		SetHeader("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15").
-		SetHeader("Referer", "https://www.gcores.com").
+		SetHeader("User-Agent", userAgent).
+		SetHeader("Referer", gcoreUrl).
 		SetDebug(true)
 
 	type Entity struct {
@@ -138,27 +141,32 @@ func main() {
 	data, _ := json.MarshalIndent(res, "", "  ")
 	log.Printf("%s", data)
 
-	if !strings.HasSuffix(res.Data.Attributes.Cover, ".jpg") {
-		err = errors.New("cover is not a jpg")
-		return
+	var coverSuffix string
+	albumCoverType := http.DetectContentType([]byte(res.Data.Attributes.Cover))
+	if albumCoverType == "image/jpeg" {
+		coverSuffix = ".jpg"
+	} else if albumCoverType == "image/png" {
+		coverSuffix = ".png"
+	} else {
+		err = errors.New("cover is not a jpg/jpeg/png file")
 	}
 
-	coverFile := filepath.Join(OutputDirectory, "cover.jpg")
+	albumCoverFile := filepath.Join(OutputDirectory, "AlbumCover", coverSuffix)
 	coverExisted := false
-	if coverExisted, err = fileExists(coverFile); err != nil {
+	if coverExisted, err = fileExists(albumCoverFile); err != nil {
 		return
 	}
 
 	if !coverExisted {
-		if _, err = coverClient.R().SetOutput(coverFile).Get(res.Data.Attributes.Cover); err != nil {
+		if _, err = coverClient.R().SetOutput(albumCoverFile).Get(res.Data.Attributes.Cover); err != nil {
 			return
 		}
 	}
 
-	var coverData []byte
-	if coverData, err = ioutil.ReadFile(coverFile); err != nil {
-		return
-	}
+	// var coverData []byte
+	// if coverData, err = ioutil.ReadFile(albumCoverFile); err != nil {
+	// 	return
+	// }
 
 	for i, radioRel := range res.Data.Relationships.PublishedAudiobooks.Data {
 		log.Println("Working on:", radioRel.ID)
